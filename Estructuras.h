@@ -17,7 +17,6 @@ typedef struct pcb_status {
     
     long IR; /*La instruccion en la que me he quedado*/
     long PC; /*La direccion virtual de la instruccion IR*/
-    long * PTBR; /*La tabla de paginas de ese proceso*/
     long Rlist[16]; /*Los 16 registros*/
 
 } pcb_status_t;

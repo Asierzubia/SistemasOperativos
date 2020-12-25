@@ -129,19 +129,13 @@ void introduce_in_memory(FILE *file,int numero_de_marcos){
 
     long direccion_virtual = (pcb.mm.code & 0xffff00) >> 8; /*Aplico mascara y desplazo*/
     long direccion_fisica = (lista_marcos_disponibles[0] & 0xff00) >> 8;
-    //pcb.mm.pgb[0]= direccion_virtual;
     printf("Falla\n");
     pcb.mm.pgb[0] = direccion_fisica;
 
-    //0x001223
-    //0x0012
-    //pcb.mm.pgb[0x0012]; --> 0xA234
-    //0xA23400 + 0x23 = 0xA23423
     long variable = 0;
     int i,j,w;
     /*Contadores para la tabla de pagina*/
     i = 1;
-    j = 0;
     /*Contador para la lista de marcos disponibles*/
     w = 0;
     while(1){
@@ -154,7 +148,8 @@ void introduce_in_memory(FILE *file,int numero_de_marcos){
                 code_data = strtol(token, &ptr, 16);
                 if (firs_two == 1) pcb.mm.code = code_data;
                 else pcb.mm.data = code_data;
-                firs_two++;
+                firs_two++;    //pcb.mm.pgb[0]= direccion_virtual;
+
             }else{ /*Ahora tengo que hacer la traduccion de las direcciones y meterlo en la tabla de paginas*/
                 /*Primero meto la traduccion en la tabla de paginas, para ello necesito aplicar una mascara que me deuelva solo los ultimos 6 bytes*/
                 code_data = strtol(text_to_read, &ptr, 16);
@@ -162,10 +157,8 @@ void introduce_in_memory(FILE *file,int numero_de_marcos){
                     w++;
                     //direccion_virtual = direccion_virtual + 1;
                     direccion_fisica = (lista_marcos_disponibles[w] & 0xff00) >> 8;;
-                    pcb.mm.pgb[i] = direccion_virtual;
-                    pcb.mm.pgb[w] = direccion_fisica;
+                    pcb.mm.pgb[i] = direccion_fisica;
                     i++; 
-                    j = j+2;
                     variable=0;
                 }
                 long direccion_fisica_completa = lista_marcos_disponibles[w] + variable;

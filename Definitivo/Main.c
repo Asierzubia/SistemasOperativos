@@ -36,7 +36,7 @@ cpu_t cpu[MAX_CPUS];
 
 int timer_ready;
 int clock_ready;
-
+int hayProceso;
 /*Creo un mutex para el clock, timer y el scheduler*/
 
 pthread_mutex_t mutex_ts,mutex_ct,mutex_clock_scheduler;
@@ -116,7 +116,7 @@ void main(int argc, char *argv[]){
 
     /*Imprime todos los procesos de cada core de cada CPU. Hay procesos con ID -200, eso significa que es un proceso
     muerto, y que cuando se pueda añadir un nuevo proceso, se añadira donde esta ese proceso*/
-    printf("-------------------------------------------------------------------------------------------------\n");
+    /*printf("-------------------------------------------------------------------------------------------------\n");
     for(int i =0;i<MAX_CPUS;i++){
         printf("CPU NUMERO %d\n",i);
         for(int j=0;j<CPU_CORES;j++){
@@ -127,14 +127,18 @@ void main(int argc, char *argv[]){
         }
     }
     printf("-------------------------------------------------------------------------------------------------\n");
-
+    */
     /*Imprime los procesos de las listas de prioridades de la lista de procesos de espera */
-    for(int i=0;i<PRIORIDAD_MAX;i++){
+    /*for(int i=0;i<PRIORIDAD_MAX;i++){
         printf("PRIORIDAD: %d\n",i);
         for(int j=0;j<MAX_PROCESS;j++){
             printf("-------------- PID = %d\n",lista_procesos_espera[i][j].id);
         }
-    }
+    }*/
+    //imprimir();
+    free(lista_marcos_disponibles);
+    free(memoria);
+    free(marcos);
 }
 
 n_pcb_t create_process(int num_marcos){
@@ -175,6 +179,7 @@ n_pcb_t create_process(int num_marcos){
 void inicializar(){
     srand(time(NULL));
     num_processes_created=0;
+    hayProceso=0;
     /*Inicializo los mutex*/
     pthread_mutex_init(&mutex_ts,NULL);
     pthread_mutex_init(&mutex_ct,NULL);
@@ -203,8 +208,8 @@ void inicializar(){
             lista_procesos_espera[p][i] = pro;
         }
     }
-    leer_programa = '0';
-    /*Rellenar los arrays de los cores de procesos y tambien me los imprime por pantalla
+    leer_programa='1';
+    //Rellenar los arrays de los cores de procesos y tambien me los imprime por pantalla
     printf("-------------------------------------------------------------------------------------------------\n");
 
     for(int i =0;i<MAX_CPUS;i++){
@@ -213,14 +218,15 @@ void inicializar(){
             printf("CORE NUMERO %d\n",j);
             for(int w=0;w<CORE_THREADS;w++){
                 
-                n_pcb_t proceso = create_process();
+                n_pcb_t proceso = create_process(1);
+                proceso.id=PROCESO_MUERTO;
                 cpu[i].cores[j].procesos[w].proceso=proceso;
-                printf("PROCESO CON ID %d ----> QUANTUM: %d \n",cpu[i].cores[j].procesos[w].proceso.id,cpu[i].cores[j].procesos[w].proceso.quantum);
+                //printf("PROCESO CON ID %d ----> QUANTUM: %d \n",cpu[i].cores[j].procesos[w].proceso.id,cpu[i].cores[j].procesos[w].proceso.quantum);
             }
         }
     }
-    printf("-------------------------------------------------------------------------------------------------\n");
-    */
+    //printf("-------------------------------------------------------------------------------------------------\n");
+    
 }
 
 unsigned char doIntrusct(int i,int j, int w){
@@ -228,6 +234,10 @@ unsigned char doIntrusct(int i,int j, int w){
     unsigned char fin = '0';
     /*Codigo*/
     long dir_instruccion = cpu[i].cores[j].procesos[w].PC;
+    printf("----------------------------------------------------------------------------------------------------\n");
+    printf("                            INSTRUCCION A EJECUTAR ---> %08lx                                       \n",dir_instruccion);
+    printf("----------------------------------------------------------------------------------------------------\n");
+
     long tipo_instruccion = (dir_instruccion & 0xF0000000) >> 28;
     long direccion_virtual = (dir_instruccion & 0x00FFFFFF);
     long offset = (direccion_virtual & 0x0000FF);
@@ -239,24 +249,42 @@ unsigned char doIntrusct(int i,int j, int w){
         long reg = (dir_instruccion & 0x0F000000) >> 24;
 
         if(tipo_instruccion == 0 ){
+            printf("----------------------------------------------------------------------------------------------------\n");
+            printf("                            TIPO DE INTRUCCION ---> LD                                             \n");
+            printf("----------------------------------------------------------------------------------------------------\n");
             cpu[i].cores[j].procesos[w].Rlist[reg] = memoria[direccion_fisica];
         }else
         {
+            printf("----------------------------------------------------------------------------------------------------\n");
+            printf("                            TIPO DE INTRUCCION ---> ST                                             \n");
+            printf("----------------------------------------------------------------------------------------------------\n");
             memoria[direccion_fisica] = cpu[i].cores[j].procesos[w].Rlist[reg];
         }
         
     }else if (tipo_instruccion == 2 ){/*ADD*/
+    printf("----------------------------------------------------------------------------------------------------\n");
+    printf("                            TIPO DE INTRUCCION ---> ADD                                             \n");
+    printf("----------------------------------------------------------------------------------------------------\n");
         /*Hay que mirar los 3 registros que necesito*/
         long r1 = (dir_instruccion & 0x0F000000) >> 24;
         long r2 = (dir_instruccion & 0x00F00000) >> 20;
         long r3 = (dir_instruccion & 0x000F0000) >> 16;
         cpu[i].cores[j].procesos[w].Rlist[r1] = r2 + r3;
     }else{ /*EXIT*/
+    printf("----------------------------------------------------------------------------------------------------\n");
+    printf("                            TIPO DE INTRUCCION ---> EXIT                                             \n");
+    printf("----------------------------------------------------------------------------------------------------\n");
         fin = '1';
         cpu[i].cores[j].procesos[w].proceso.id=PROCESO_MUERTO;
     }
     if(fin == '0'){
-        cpu[i].cores[j].procesos[w].IR = cpu[i].cores[j].procesos[w].proceso.status.IR + 4;
+        /*Tengo que modificar el estado del proceso, para que en la siguiente vuelta no ejecute 
+        la misma instruccion y para mas cosas*/
+        cpu[i].cores[j].procesos[w].IR = cpu[i].cores[j].procesos[w].IR + 4;
+        cpu[i].cores[j].procesos[w].PC = 
+        printf("----------------------------------------------------------------------------------------------------\n");
+        printf("                            SIGUIENTE INTRUCCION ---> %08lx                                             \n",cpu[i].cores[j].procesos[w].IR);
+        printf("----------------------------------------------------------------------------------------------------\n");
     }
 }
 
@@ -274,12 +302,13 @@ void revisar_procesos(){
 
                         if(cpu[i].cores[j].procesos[w].proceso.quantum>0){
                             /*Creo un hilo para que se ejecute, fijo que si pero a ver como lo hago*/
-                            doInstrucut(i,j,w);
                             cpu[i].cores[j].procesos[w].proceso.quantum-=1;
                         }
                     
-                printf("He bajado el quantum al proces: %d ---> QUANTUM: %d  ---> PRIORIDAD: %d\n",cpu[i].cores[j].procesos[w].proceso.id,cpu[i].cores[j].procesos[w].proceso.quantum,cpu[i].cores[j].procesos[w].proceso.priority);
+                //printf("He bajado el quantum al proces: %d ---> QUANTUM: %d  ---> PRIORIDAD: %d\n",cpu[i].cores[j].procesos[w].proceso.id,cpu[i].cores[j].procesos[w].proceso.quantum,cpu[i].cores[j].procesos[w].proceso.priority);
                 }
+                doIntrusct(i,j,w);
+
             }
         }
     }
@@ -288,7 +317,7 @@ void revisar_procesos(){
 
 void *clocker(void *arguments){
     struct arg_struct *args = arguments;
-    printf("El ha clock empezado a funcionar. Hilo %d \n",args -> arg1);
+    //printf("El ha clock empezado a funcionar. Hilo %d \n",args -> arg1);
     int frequency = args -> arg2;
     int i;
     int conteo=0;
@@ -303,16 +332,18 @@ void *clocker(void *arguments){
         clock_ready=1;
         pthread_mutex_unlock(&mutex_ct);
         conteo++;
-        printf("El clock ha generado un ciclo ---> CICLO NUMERO: %d\n",conteo);
+        //printf("El clock ha generado un ciclo ---> CICLO NUMERO: %d\n",conteo);
         /*Como ha terminado un ciclo de reloj procede a revisar los procesos de las CPUS*/
-        revisar_procesos();
+        if(hayProceso==1){
+            revisar_procesos();
+        }
     
     }
 }
 
 void *timer(void *arguments){
     struct arg_struct *args = arguments;
-    printf("El timer ha empezado a funcionar. Hilo %d \n",args -> arg1);
+    //printf("El timer ha empezado a funcionar. Hilo %d \n",args -> arg1);
     int frecuencia = args -> arg2;
     int duerme=0;
     int conteo=0;
@@ -322,7 +353,7 @@ void *timer(void *arguments){
             clock_ready=0;
             /*Si el clock ha realizado frecuencia veces entonces avisa el scheduler*/
             if(conteo == frecuencia){
-                printf("El timer ha recibido la señal del clock \n");
+                //printf("El timer ha recibido la señal del clock \n");
                 duerme=1;
                 conteo=0;
             }else{
@@ -339,39 +370,104 @@ void *timer(void *arguments){
         }
     }
 }
-/*
-void create_add_processes(){
+void look_for_free_frames(int numero_de_marcos){
 
-    //Antes de crear un nuevo proceso voy a comprobar a ver
-    si no supera el numero maximo de procesos que se pueden
-    almacenar en la cola de procesos de espera
-    //Booleano para saber si se ha anadido o no
-    int bool=0;
-    int salir=0;
-    int i=0;
-    if(num_processes_created<MAX_PROCESS){
-        n_pcb_t created_process = create_process();
-        /*Recorro la lista de los procesos de la lista con la misma prioridad del proceso para ver si 
-        hay espacio
-        while(i<MAX_PROCESS && salir==0){
-            pthread_mutex_lock(&mutex_clock_scheduler);
-            if(lista_procesos_espera[created_process.priority][i].id == -1){
-                lista_procesos_espera[created_process.priority][i] = created_process;
-                bool=1;
-                salir=1;
-            }
-            pthread_mutex_unlock(&mutex_clock_scheduler);
-            i++;
+    int num_ceros=0;/**Contador para llevar la cuenta del numero de ceros encontrados, es decir, el numero de marcos libres*/
+    int i = 0;/*Contador del bucle*/
+    lista_marcos_disponibles = (int *)malloc(numero_de_marcos*sizeof(int)); /*Contiene que marcos estan libres*/
+    int contador_lista=0;
+    while (i<SIZE && num_ceros < numero_de_marcos){
+        if ( marcos[i] == '0'){
+            /**/
+            printf("Ha entrado\n");
+            lista_marcos_disponibles[contador_lista] = i * 256;
+            contador_lista++;
+            num_ceros++;
+            marcos[i]='1';
         }
-        if(bool==0){
-            num_processes_created--;
-            iD_list[created_process.id][0] = -1;
-        }else{
-            bool=0;
+        i++;
+    }
+    printf("Valor de i ---> %d",i);
+}
+
+
+void introduce_in_memory(FILE *file,int numero_de_marcos){
+    
+    char *ptr;
+    rewind(file);/*Pungo el indicar mirando al comienzo del fichero para volverlo a leer*/
+    char text_to_read[50];
+    int firs_two = 0;
+    long code_data;
+                    printf("-----------------------------------------------------------------\n");
+
+    /*Reserva de memoria de la tabla de paginas del pcb*/
+    n_pcb_t pcb = create_process(numero_de_marcos);
+    long * bar = (long*)malloc(8);
+    if(bar == NULL) {
+        printf("Memory allocation error");//Aqui compruebo si el malloc me devuelve null, de ser asi entonces el malloc no ha tenido memoria para reservar, por lo que tendre que ponerlo en una lista de espera para volver a intentar crear el proceso mas tarde.
+    }else{
+        pcb.mm.pgb = bar;
+    }
+    /*Asigno la primera relacion de direccion fisica y virtual en la tabla de paginas*/
+
+    long direccion_virtual = (pcb.mm.code & 0xffff00) >> 8; /*Aplico mascara y desplazo*/
+    long direccion_fisica = (lista_marcos_disponibles[0] & 0xff00) >> 8;
+    printf("Falla\n");
+    pcb.mm.pgb[0] = direccion_fisica;
+
+    long variable = 0;
+    int i,j,w;
+    /*Contadores para la tabla de pagina*/
+    i = 1;
+    /*Contador para la lista de marcos disponibles*/
+    w = 0;
+    while(1){
+        fgets(text_to_read,50,file);
+        if(feof(file)) break;/*Para controlar que he llegado al final del archivo*/
+        else{
+            if(firs_two < 2){ /*Esto es para meter el .text y el .code en el pcb*/
+                char * token = strtok(text_to_read ," ");
+                token = strtok(NULL ," ");
+                code_data = strtol(token, &ptr, 16);
+                if (firs_two == 1) pcb.mm.code = code_data;
+                else pcb.mm.data = code_data;
+                firs_two++;    //pcb.mm.pgb[0]= direccion_virtual;
+
+            }else{ /*Ahora tengo que hacer la traduccion de las direcciones y meterlo en la tabla de paginas*/
+                /*Primero meto la traduccion en la tabla de paginas, para ello necesito aplicar una mascara que me deuelva solo los ultimos 6 bytes*/
+                code_data = strtol(text_to_read, &ptr, 16);
+                if(variable == 256){ /*significa que hay que hacer uso del siguiente marco disponible*/
+                    w++;
+                    //direccion_virtual = direccion_virtual + 1;
+                    direccion_fisica = (lista_marcos_disponibles[w] & 0xff00) >> 8;;
+                    pcb.mm.pgb[i] = direccion_fisica;
+                    i++; 
+                    variable=0;
+                }
+                long direccion_fisica_completa = lista_marcos_disponibles[w] + variable;
+                memoria[direccion_fisica_completa] = code_data;
+                variable = variable + 4;
+            }                
         }
     }
-    
-}*/
+    hayProceso=1;
+    /*Meto el proceso en la lista de espera*/
+    for(int i=0;i<MAX_CPUS;i++){
+
+        for(int j=0;j<CPU_CORES;j++){
+
+            for(int w=0;w<CORE_THREADS;w++){
+
+                if (cpu[i].cores[j].procesos[w].proceso.id==PROCESO_MUERTO)
+                {
+                    cpu[i].cores[j].procesos[w].proceso = pcb;
+                }
+                
+            }
+        }
+    }
+    imprimir();
+}
 void read_create_pcb(){
 
     //lseek(2) a partir de la segunda,tiene que ser multiplo de 9
@@ -414,11 +510,12 @@ void read_create_pcb(){
                 num_lineas_archivo = num_lineas_archivo - 2;//Le quito dos porque las dos primeras lineas nos las voy a meter en la memoeria fisica
                 if( num_lineas_archivo % 64 == 0) num_marcos = num_lineas_archivo / 64;
                 else num_marcos = num_lineas_archivo / 64 + 1;
-
                 while(1){/*Espero hasta que haya marcos libres*/
+                printf("Ha llegado hasta aqui\n");
 
                     if(num_marcos_disponibles >= num_marcos && leer_programa=='1'){
                         leer_programa='0';
+                        printf("Hasta aqui si llega");
                         look_for_free_frames(num_marcos);  
                         introduce_in_memory(fp,num_marcos);
                         free(lista_marcos_disponibles);
@@ -433,7 +530,7 @@ void read_create_pcb(){
 
 void *procesGenerator(void *arguments){/*Leer todos de una vez, o cada vez que salta el process genertor leer un programa*/
     struct arg_struct *args = arguments;
-    printf("El generador de procesos ha empezado a funcionar. Hilo %d \n",args -> arg1);
+    //printf("El generador de procesos ha empezado a funcionar. Hilo %d \n",args -> arg1);
     int frecuencia = args -> arg2;
     int i;
     read_create_pcb();
@@ -455,11 +552,15 @@ void add_process_to_queue(int i, int j, int k){
         for (int t = 0; t < MAX_PROCESS; t++)
         {
             /*Si hay sitio en alguna lista de procesos de algun core de alguna cpu, lo mete*/
-            if(lista_procesos_espera[o][t].id != -1){
+            if(lista_procesos_espera[o][t].id != -1 && lista_procesos_espera[o][t].id != PROCESO_MUERTO){
                 cpu[i].cores[j].procesos[k].proceso = lista_procesos_espera[o][t];
                 lista_procesos_espera[o][t].id=-1;
                 num_processes_created--;
-                printf("Se ha anadido el proceso: %d \n",cpu[i].cores[j].procesos[k].proceso.id);
+                //printf("Se ha anadido el proceso: %d \n",cpu[i].cores[j].procesos[k].proceso.id);
+                /*Poner el proceso del hilo en el estado en que esta el proceso*/
+                cpu[i].cores[j].procesos[k].IR = cpu[i].cores[j].procesos[k].proceso.status.IR;
+                cpu[i].cores[j].procesos[k].PC = cpu[i].cores[j].procesos[k].proceso.status.PC;
+                for(int l = 0;l<16;l++) cpu[i].cores[j].procesos[k].Rlist[l] = cpu[i].cores[j].procesos[k].proceso.status.Rlist[l];
                 salir=1;
                 break;
             }
@@ -480,48 +581,46 @@ void remove_from_queue(int i, int j, int w){
     for(int h=0;h<MAX_PROCESS;h++){
         if(lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h].id == -1){
             /*Aqui le bajo la prioridad al proceso cada vez que vuelve a la lista de procesos de espera*/
-            printf("PRIORIDAD ANTES ---> %d\n",cpu[i].cores[j].procesos[w].proceso.priority);
+            //printf("PRIORIDAD ANTES ---> %d\n",cpu[i].cores[j].procesos[w].proceso.priority);
             int prioridad = cpu[i].cores[j].procesos[w].proceso.priority;
             if(prioridad!=(PRIORIDAD_MAX-1)){
                 prioridad=prioridad+1;
                 cpu[i].cores[j].procesos[w].proceso.priority = prioridad;
             }
             lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h] = cpu[i].cores[j].procesos[w].proceso;
-            printf("PRIORIDAD DESPUES ---> %d\n",lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h].priority);
-            cpu[i].cores[j].procesos[w].proceso.id = PROCESO_MUERTO;
+            //printf("PRIORIDAD DESPUES ---> %d\n",lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h].priority);
             //Para poder recuperar el quantum del proceso
             lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h].quantum = iD_list[h][1];
             /*Tengo que copiar el estado del hilo al proceso*/
             cpu[i].cores[j].procesos[w].proceso.status.IR = cpu[i].cores[j].procesos[w].IR;
             cpu[i].cores[j].procesos[w].proceso.status.PC = cpu[i].cores[j].procesos[w].PC;
-            cpu[i].cores[j].procesos[w].proceso.status.PTBR = cpu[i].cores[j].procesos[w].PTBR;
             for(int l = 0;l<16;l++) cpu[i].cores[j].procesos[w].proceso.status.Rlist[l] = cpu[i].cores[j].procesos[w].Rlist[l];
 
-            printf("Se ha quitado de la cola de procesos el proceso: %d ----> QUANTUM: %d\n",lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h].id,lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h].quantum);
+            //printf("Se ha quitado de la cola de procesos el proceso: %d ----> QUANTUM: %d\n",lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h].id,lista_procesos_espera[cpu[i].cores[j].procesos[w].proceso.priority][h].quantum);
             break;
         }
     }
-
 }
 
 void delete_process(int i, int j, int w){
 
-    printf("Se ha eliminado el proceso: %d\n",cpu[i].cores[j].procesos[w].proceso.id);
+    //printf("Se ha eliminado el proceso: %d\n",cpu[i].cores[j].procesos[w].proceso.id);
     iD_list[cpu[i].cores[j].procesos[w].proceso.id][0] = -1;
-    cpu[i].cores[j].procesos[w].proceso.id = PROCESO_MUERTO;
+    cpu[i].cores[j].procesos[w].proceso.id != PROCESO_MUERTO;
     int num_frames_proceso = cpu[i].cores[j].procesos[w].proceso.mm.num_frames;
     num_marcos_disponibles = num_marcos_disponibles +num_frames_proceso ;
     for(int i =0;i<num_frames_proceso;i++){
         lista_marcos_disponibles[cpu[i].cores[j].procesos[w].proceso.mm.pgb[i]]=0;
     }
+    free(cpu[i].cores[j].procesos[w].proceso.mm.pgb);
     /*Esta parte solo se encarga de imprimir todos los procesos de las cpu cada vez que se elimina por completo un proceso*/
-    for(int i=0;i<MAX_CPUS;i++){
+    /*for(int i=0;i<MAX_CPUS;i++){
         for(int j=0;j<CPU_CORES;j++){
             for(int w=0;w<CORE_THREADS;w++){
-                printf("Proceso: %d ---> QUANTUM: %d \n",cpu[i].cores[j].procesos[w].proceso.id,cpu[i].cores[j].procesos[w].proceso.quantum);
+                //printf("Proceso: %d ---> QUANTUM: %d \n",cpu[i].cores[j].procesos[w].proceso.id,cpu[i].cores[j].procesos[w].proceso.quantum);
             }
         }
-    }
+    }*/
 }
 
 void check_processes(){
@@ -530,7 +629,7 @@ void check_processes(){
     de los cores de los cpus*/
     int processes_to_add[CPU_CORES*MAX_CPUS*CORE_THREADS][3];
     int number_processes_add =0 ;
-    printf("Ha entrado en Check_processes\n");
+    //printf("Ha entrado en Check_processes\n");
 /*---------------SOLO PRINTEA EL NUMERO DE PROCESOS QUE HAY EN LA LISTA DE ESPERA DE PROCESOS------------------*/
     int cont=0;
     for(int g=0;g<PRIORIDAD_MAX;g++){
@@ -540,7 +639,7 @@ void check_processes(){
             }
         }
     }
-    printf("LA LISTA DE ESPERA TIENE ---- %d ----- DISPONIBLES \n",cont);
+    //printf("LA LISTA DE ESPERA TIENE ---- %d ----- DISPONIBLES \n",cont);
 /*-------------------------------------------------------------------------------------------------------------*/
     for(int i=0;i<MAX_CPUS;i++){
 
@@ -558,11 +657,13 @@ void check_processes(){
                         number_processes_add+=1;  
 
                     }
+                }else{
+                    delete_process(i,j,w);
                 }
             }
         }
     }
-    printf("NUMERO DE PROCESOS A ELIMINADOS O MOVIDOS -----> %d\n", number_processes_add);
+    //printf("NUMERO DE PROCESOS A ELIMINADOS O MOVIDOS -----> %d\n", number_processes_add);
     for(int i=0;i<number_processes_add;i++){
         add_process_to_queue(processes_to_add[i][0],processes_to_add[i][1],processes_to_add[i][2]);
     }
@@ -570,7 +671,7 @@ void check_processes(){
 
 void *loader(void *arguments){
     struct arg_struct *args = arguments;
-    printf("El scheduler ha empezado a funcionar. Hilo %d \n",args -> arg1);
+    //printf("El scheduler ha empezado a funcionar. Hilo %d \n",args -> arg1);
     while(1){
         if(timer_ready==1){
             /*Cuando el timer le avisa, el scheduler procede a mirar los procesos*/
@@ -583,5 +684,25 @@ void *loader(void *arguments){
             pthread_mutex_unlock(&mutex_clock_scheduler);
 
         }
+    }
+}
+
+
+void imprimir(){
+    /*Imprimo la memoria*/
+    long que_marco=0x0000;
+    printf("------|\n");
+    printf("------|\n");
+    for(long i=0;i < 64*SIZE;i = i + 4){
+        if(i % 256 == 0) {
+            printf("Marco -----> %04lx\n",que_marco);
+            printf("------|\n");
+            printf("------|\n");
+            que_marco = que_marco + 256;
+
+        }
+        long valor = memoria[i];
+        printf("|------Posicion > %04lx --- Valor > %08lx\n",i,valor);
+        printf("|");
     }
 }
